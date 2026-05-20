@@ -1,0 +1,13 @@
+# Core scientific Python dependencies
+numpy>=1.23
+matplotlib>=3.7
+
+# Optional reference solution support.
+# The code falls back to an internal Buckley--Leverett tangent construction
+# if pywaterflood is not installed.
+pywaterflood
+
+# Optional MPI sweep support.
+# Requires a working MPI implementation such as Open MPI, MPICH, Intel MPI,
+# or the MPI stack provided by an HPC cluster.
+mpi4py>=4.0
