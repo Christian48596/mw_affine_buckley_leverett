@@ -1,118 +1,137 @@
-# Affine-Constrained Multiwavelet/DG Buckley--Leverett Solver
+# Fixed-Grid Affine-Constrained Multiwavelet Coefficient Solver for Buckley--Leverett Flow
 
-This repository contains `mw_buckley_leverett.py`, a public and fully commented Python driver for a one-dimensional Buckley--Leverett waterflooding benchmark. The code implements an affine-constrained conservative modal multiwavelet/DG solver for saturation transport in porous media, with Berea-core parameters provided as the default case.
+This repository contains a public Python implementation of a fixed-grid conservative affine-constrained modal/multiwavelet coefficient method for one-dimensional Buckley--Leverett saturation transport.
 
-The solver is designed for reproducible manuscript figures and tables, but it can also be used as a standalone command-line tool for testing other rock/core parameters.
+The code evolves the saturation directly in a local orthonormal coefficient basis. The first local mode carries the conservative cell average, while the higher modes carry zero-mean intra-cell detail information. The nonlinear Buckley--Leverett flux is advanced through a conservative weak formulation with monotone numerical interface fluxes. The physical inflow condition is imposed as an affine trace constraint on the coefficient vector, and shock-induced oscillations are controlled by limiters acting on the modal detail coefficients.
+
+The default case reproduces the Berea-core waterflood benchmark used in the manuscript. Other rocks or cores can be tested by overriding the physical and Corey fractional-flow parameters from the command line.
+
+## Important terminology
+
+This repository should be cited and described as a **fixed-grid affine-constrained modal/multiwavelet coefficient method**.
+
+The method is **not presented as a standard discontinuous Galerkin package**. Its conservative weak residual is related to modal discontinuous formulations, but the implementation and manuscript organize the method around coefficient-space operations: mean/detail coefficients, affine inflow enforcement, detail-only boundary reprojection, conservative flux coupling, and detail limiting.
+
+## Main file
+
+```bash
+mw_buckley_leverett.py
+```
 
 ## What the code solves
 
-The code solves the one-dimensional hyperbolic Buckley--Leverett equation
+The code solves the one-dimensional hyperbolic Buckley--Leverett saturation equation
 
-```text
-dS/dt + dF(S)/dx = 0,
-F(S) = (v/phi) f_w(S),
+```math
+\frac{\partial S}{\partial t}
++
+\frac{\partial \mathcal F(S)}{\partial x}
+=0,
+\qquad
+\mathcal F(S)=\frac{v}{\phi} f_w(S),
 ```
 
-where `S` is the water saturation, `phi` is porosity, `v` is Darcy velocity, and `f_w(S)` is a Corey fractional-flow function.
+where:
 
-The numerical state is not only a finite-volume cell average. Each cell stores a local modal coefficient vector
+- `S` is the wetting-phase saturation,
+- `v` is the Darcy velocity,
+- `phi` is the porosity,
+- `f_w(S)` is the Corey fractional-flow function.
+
+The evolved unknown is a cell-local modal coefficient array:
 
 ```text
 S[c, k]
 
-k = 0      cell mean mode
-k >= 1    intra-cell detail / multiwavelet modes
+k = 0      conservative cell-mean mode
+k >= 1    zero-mean local detail/multiwavelet modes
 ```
 
-The residual is assembled in conservative weak form using numerical interface fluxes. The left inflow boundary condition is imposed as a linear trace constraint and enforced by an affine projection. This keeps the boundary state consistent while preserving the conservative shock-capturing structure.
-
-## Main features
-
-- Conservative modal multiwavelet/DG discretization.
-- Affine enforcement of the left inflow saturation constraint.
-- Corey fractional-flow model.
-- Berea-core default benchmark.
-- Rusanov, Godunov-sampled, and central numerical flux options.
-- TVB, bounds, flattening, or no limiter options.
-- Independent Buckley--Leverett reference profile.
-- Optional `pywaterflood` reference support.
-- Automatic or fixed breakthrough-probe location.
-- PNG/PDF figure generation.
-- CSV/JSON validation summaries.
-- MPI support for independent parameter sweeps.
+The left boundary is treated as a physical inflow boundary. The imposed injected-water saturation is enforced as a linear trace constraint on the coefficient vector. The right boundary is treated as an outflow boundary.
 
 ## Repository contents
 
+A typical repository layout is:
+
 ```text
-mw_buckley_leverett.py   Main executable Python solver
-requirements.txt        Python package requirements
-LICENSE                 MIT license
-README.md               Repository documentation
+.
+├── mw_buckley_leverett.py
+├── README.md
+├── requirements.txt
+└── LICENSE
 ```
 
-Generated output folders are not required in the repository and can be safely ignored by Git.
+The license is MIT.
 
-## Recommended Python version
+## Python version
 
-Use Python 3.10 or newer. Python 3.11 is recommended for a clean modern environment.
+Recommended:
 
-The code itself uses standard scientific Python packages. MPI execution requires `mpi4py` plus a working MPI implementation such as Open MPI, MPICH, Intel MPI, or the MPI stack available on your HPC cluster.
+```text
+Python 3.10 or newer
+```
+
+The code is pure Python and uses standard scientific Python packages. Python 3.11 is a good default choice for new environments.
 
 ## Installation
 
-Create a fresh virtual environment:
+Create and activate a virtual environment:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
 ```
 
-On an HPC cluster, load the system MPI module before installing or using `mpi4py`, for example:
+Install the required packages:
 
 ```bash
-module load openmpi
-python -m pip install -r requirements.txt
+pip install -r requirements.txt
 ```
 
-The exact module name depends on the cluster.
+For MPI parameter sweeps, the system must also provide a working MPI installation, for example OpenMPI or MPICH. The Python package `mpi4py` is listed in `requirements.txt`, but it must be linked against a working MPI runtime.
 
 ## Dependencies
 
 Core dependencies:
 
-- `numpy`
-- `matplotlib`
-
-Optional but useful dependencies:
-
-- `pywaterflood`: used when available to compute the independent Buckley--Leverett reference.
-- `mpi4py`: required only for MPI parameter sweeps.
-
-If `pywaterflood` is not available, the code automatically falls back to an internal tangent-construction reference for the Corey curve. A single simulation can run without MPI.
-
-## Default case: Berea-core benchmark
-
-The default parser settings reproduce the Berea-core waterflood case used in the manuscript:
-
 ```text
-L   = 6 in
-D   = 1.5 in
-phi = 0.20
-Swc = 0.10
-Sor = 0.20
-mu_w = 1 cP
-mu_o = 4 cP
-nw = no = 2
-q = 1 mL/min
+numpy
+matplotlib
 ```
 
-Dimensional values are converted internally to SI-compatible units where needed. The injection rate is entered in `mL/min`, while the solver time unit is days. Output plots also report time in minutes for readability.
+Optional but recommended:
 
-## Run the default Berea case
+```text
+pywaterflood
+```
 
-This command generates the main breakthrough curve and saturation-profile figures for the Berea benchmark:
+`pywaterflood` is used to generate an independent Buckley--Leverett reference solution. If it is not available, the code falls back to an internal tangent-construction reference for the Corey fractional-flow curve.
+
+Optional for MPI sweeps:
+
+```text
+mpi4py
+```
+
+MPI is used only to distribute independent parameter-sweep cases. A single Buckley--Leverett solve is not domain-decomposed.
+
+## Quick start: default Berea-core case
+
+The default parser settings reproduce the Berea-core waterflood benchmark:
+
+```text
+L       = 6 in
+D       = 1.5 in
+phi     = 0.20
+Swc     = 0.10
+Sor     = 0.20
+mu_w    = 1 cP
+mu_o    = 4 cP
+nw = no = 2
+q       = 1 mL/min
+```
+
+Run the default Berea case and generate the main breakthrough/profile figures:
 
 ```bash
 python mw_buckley_leverett.py \
@@ -127,27 +146,28 @@ python mw_buckley_leverett.py \
   --outdir JCP_RESULTS/final_figures_rusanov_Nc256_p2
 ```
 
-For the default Berea core, `--probe-x 0.0762` places the breakthrough probe at the midpoint of the core:
+Here `--probe-x 0.0762` places the breakthrough probe at the midpoint of the Berea core:
 
 ```text
 x = L/2 = 0.0762 m = 7.62 cm
 ```
 
-Expected outputs include:
+Main outputs:
 
 ```text
 Figure1_Sw_vs_t_probe.png
 Figure1_Sw_vs_t_probe.pdf
 Figure2_profiles.png
 Figure2_profiles.pdf
-Sw_probe_time_fully_mw.txt
 validation_metrics_fully_mw.csv
 run_summary_fully_mw.json
+Sw_probe_time_fully_mw.txt
+Sw_profile_fully_mw_pvi*.txt
 ```
 
-## Run a Berea MPI sweep
+## Full Berea sweep with MPI
 
-The following command runs independent simulations over resolution, modal order, and numerical flux:
+To reproduce the resolution, flux, and modal-order studies:
 
 ```bash
 mpirun -np 8 python mw_buckley_leverett.py \
@@ -162,9 +182,7 @@ mpirun -np 8 python mw_buckley_leverett.py \
   --outdir JCP_RESULTS/full_sweep_p2_tables
 ```
 
-MPI is used only to distribute independent parameter cases. A single Buckley--Leverett solve is not domain-decomposed.
-
-Expected aggregate outputs include:
+Main outputs:
 
 ```text
 sweep_summary.csv
@@ -181,30 +199,30 @@ manuscript_plots/Table_modal_order_sensitivity.csv
 manuscript_plots/Table_modal_order_sensitivity.tex
 ```
 
-## General case: using another rock or core
+## Using another rock or core
 
-The Berea preset is only a default template. To simulate another rock/core, keep the same script and override the physical parameters from the command line.
+The Berea case is only the default preset. To test a different rock, keep the same code and override the physical parameters from the command line.
 
-The most important physical inputs are:
+The most important parameters are:
 
 ```text
---L             core length [m]
---D             core diameter [m]
---phi           porosity [-]
---Swc           connate/irreducible water saturation [-]
---Sor           residual oil saturation [-]
---sw-init       initial water saturation [-]
---sw-inj        injected water saturation [-]
---mu-w          water viscosity [Pa s]
---mu-o          oil viscosity [Pa s]
---nw            Corey water exponent [-]
---no            Corey oil exponent [-]
---krw0          endpoint water relative permeability [-]
---kro0          endpoint oil relative permeability [-]
---q-mL-min      injection rate [mL/min]
+--L            core length [m]
+--D            core diameter [m]
+--phi          porosity [-]
+--Swc          connate-water saturation [-]
+--Sor          residual-oil saturation [-]
+--mu-w         water viscosity [Pa s]
+--mu-o         oil viscosity [Pa s]
+--nw           Corey exponent for water [-]
+--no           Corey exponent for oil [-]
+--krw0         endpoint water relative permeability [-]
+--kro0         endpoint oil relative permeability [-]
+--q-mL-min     injection rate [mL/min]
+--sw-init      initial water saturation [-]
+--sw-inj       injected water saturation [-]
 ```
 
-Example for a different stone/core:
+### Example: one simulation for a different rock
 
 ```bash
 python mw_buckley_leverett.py \
@@ -213,8 +231,6 @@ python mw_buckley_leverett.py \
   --phi 0.18 \
   --Swc 0.15 \
   --Sor 0.25 \
-  --sw-init 0.15 \
-  --sw-inj 0.75 \
   --mu-w 1.0e-3 \
   --mu-o 8.0e-3 \
   --nw 2.5 \
@@ -222,6 +238,8 @@ python mw_buckley_leverett.py \
   --krw0 1.0 \
   --kro0 1.0 \
   --q-mL-min 0.5 \
+  --sw-init 0.15 \
+  --sw-inj 0.75 \
   --ncells 256 \
   --p 2 \
   --flux rusanov \
@@ -230,14 +248,12 @@ python mw_buckley_leverett.py \
   --t-end-pvi 1.50 \
   --probe-mode auto-shock \
   --plot \
-  --outdir RESULTS/general_stone_single_run
+  --outdir RESULTS/general_rock_single
 ```
 
-For a new rock, `--probe-mode auto-shock` is often more convenient than setting `--probe-x` manually. The code scans the independent reference profile at `--probe-auto-pvi`, detects the largest saturation gradient, and places the breakthrough probe near the displacement front.
+For a new rock, `--probe-mode auto-shock` is useful because the shock position may not be known in advance. The code scans the independent reference profile at `--probe-auto-pvi` and places the probe near the largest saturation gradient.
 
-## General-rock MPI sweep
-
-For a different rock/core, the same parameter overrides can be combined with MPI sweeps. This is the recommended command when testing sensitivity to resolution, modal order, and flux choice:
+### Example: MPI sweep for a different rock
 
 ```bash
 mpirun -np 8 python mw_buckley_leverett.py \
@@ -247,8 +263,6 @@ mpirun -np 8 python mw_buckley_leverett.py \
   --phi 0.18 \
   --Swc 0.15 \
   --Sor 0.25 \
-  --sw-init 0.15 \
-  --sw-inj 0.75 \
   --mu-w 1.0e-3 \
   --mu-o 8.0e-3 \
   --nw 2.5 \
@@ -256,6 +270,8 @@ mpirun -np 8 python mw_buckley_leverett.py \
   --krw0 1.0 \
   --kro0 1.0 \
   --q-mL-min 0.5 \
+  --sw-init 0.15 \
+  --sw-inj 0.75 \
   --ncells-list 64 128 256 512 \
   --p-list 1 2 3 4 \
   --flux-list rusanov godunov \
@@ -264,43 +280,51 @@ mpirun -np 8 python mw_buckley_leverett.py \
   --t-end-pvi 1.50 \
   --probe-mode auto-shock \
   --plot-sweep \
-  --outdir RESULTS/general_stone_mpi_sweep
+  --outdir RESULTS/general_rock_mpi_sweep
 ```
 
-This writes one subfolder per independent case, plus a global sweep summary in the main output directory.
+This command runs independent combinations of:
 
-## Choosing the breakthrough probe
+```text
+number of cells: 64, 128, 256, 512
+number of local modes p: 1, 2, 3, 4
+flux: Rusanov and sampled Godunov
+```
 
-Two modes are available.
+Each MPI rank receives independent cases. The solver itself remains a fixed-grid one-dimensional coefficient-space solver; MPI is used only for the sweep.
+
+## Probe options
+
+The breakthrough curve can be measured in two ways.
 
 ### Fixed probe
 
-Use this when the physical location is known and the run must be exactly reproducible:
+Use a physical location in meters:
 
 ```bash
 --probe-x 0.0762
 ```
 
-This is recommended for final manuscript figures.
+This is recommended for reproducing the Berea manuscript figures.
 
 ### Automatic shock probe
 
-Use this when testing a new rock/core and the front location is not known in advance:
+Use:
 
 ```bash
 --probe-mode auto-shock
 ```
 
-Optional controls:
+Optional control:
 
 ```bash
 --probe-auto-pvi 0.20
 --probe-scan-points 4000
 ```
 
-The automatic probe is selected from the independent reference solution, not from the multiwavelet solution.
+This is recommended when testing a different rock or geometry.
 
-## Important numerical options
+## Numerical options
 
 ### Number of cells
 
@@ -314,94 +338,97 @@ or for a sweep:
 --ncells-list 64 128 256 512
 ```
 
-### Modal order
-
-In this code, `p` is the number of local modal basis functions per cell. The polynomial degree is `p - 1`.
+### Number of local modes
 
 ```bash
 --p 2
 ```
 
-or for a sweep:
+Here `p` is the number of local modes per cell. The polynomial degree is `p - 1`.
+
+For the Berea benchmark, the manuscript uses `p = 2` as the main production setting because it gives the best accuracy--cost compromise among the tested orders for this shock-dominated problem.
+
+### Numerical flux
+
+Available choices:
 
 ```bash
---p-list 1 2 3 4
+--flux rusanov
+--flux godunov
+--flux godunov-sampled
+--flux central
 ```
 
-### Flux
-
-Recommended robust choice:
+Recommended for robust production runs:
 
 ```bash
 --flux rusanov
 ```
 
-Comparison option:
-
-```bash
---flux godunov
-```
-
-Sweep option:
-
-```bash
---flux-list rusanov godunov
-```
-
 ### Limiter
 
-Recommended shock-capturing choice:
+Available choices:
+
+```bash
+--limiter none
+--limiter bounds
+--limiter tvb
+--limiter flatten
+```
+
+Recommended for the Berea benchmark:
 
 ```bash
 --limiter tvb
 ```
 
-Other available options:
-
-```bash
---limiter bounds
---limiter flatten
---limiter none
-```
-
-### CFL number
-
-The default recommended value for the manuscript runs is:
-
-```bash
---cfl 0.20
-```
-
 ## Output files
 
-Single-run outputs may include:
+For a single case, the code writes:
 
 ```text
-Sw_profile_fully_mw_pvi*.txt
-Sw_probe_time_fully_mw.txt
-validation_metrics_fully_mw.csv
 run_summary_fully_mw.json
+validation_metrics_fully_mw.csv
+Sw_probe_time_fully_mw.txt
+Sw_profile_fully_mw_pvi*.txt
 Figure1_Sw_vs_t_probe.png/pdf
 Figure2_profiles.png/pdf
 ```
 
-MPI/list-sweep outputs may include:
+For a sweep, the code writes:
 
 ```text
 sweep_summary.csv
 sweep_summary.json
-manuscript_plots/*.png
-manuscript_plots/*.pdf
-manuscript_plots/*.csv
-manuscript_plots/*.tex
 ```
 
-The JSON files store physical parameters, numerical settings, probe location, wall time, and diagnostic metadata. The CSV files are suitable for direct plotting or import into a manuscript workflow.
+If `--plot-sweep` is used, it also writes manuscript-oriented plots and tables under:
 
-## License
+```text
+manuscript_plots/
+```
 
-This project is released under the MIT License. See the `LICENSE` file for details.
+## Reproducibility notes
+
+- The default Berea physical parameters are built into the parser.
+- All dimensional quantities are written to JSON summaries.
+- The reference solution is independent of the coefficient-space solver.
+- If `pywaterflood` is installed, it is used for the reference calculation.
+- If `pywaterflood` is unavailable, the code uses an internal tangent-construction reference.
+- MPI sweeps are embarrassingly parallel: each case is independent.
+- The right boundary is an outflow boundary; no Dirichlet condition is imposed there.
 
 ## Citation
 
-If this code is used in a publication, cite the associated Buckley--Leverett Berea-core manuscript and this repository.
+If you use this code, cite the associated manuscript:
+
+```text
+A Fixed-Grid Affine-Constrained Multiwavelet Coefficient Method
+for Buckley--Leverett Shock Capturing
+```
+
+and cite this repository.
+
+## License
+
+This project is released under the MIT License.
